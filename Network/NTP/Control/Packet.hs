@@ -1,8 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Network.NTP.Control.Packet
   ( Op(..)
-  , Time
-  , TimeStamp
   , Variable(..)
   , Variables(..)
   , LeapIndicator(..)
@@ -22,8 +20,9 @@ import Data.Char (isSpace)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BSC
 import Data.ByteString.Lex.Integral (readHexadecimal)
-import Data.ByteString.Lex.Double (readDouble)
+import Data.Fixed (Pico)
 import Data.Serialize (Serialize(..), getByteString, putWord8, getWord16be, putWord16be, putByteString)
+import Data.Time.Clock (DiffTime)
 import Data.Time.Clock.POSIX (POSIXTime)
 import Data.Word (Word8, Word16)
 
@@ -42,16 +41,12 @@ data Op =
  | UnsetTrap
   deriving (Eq, Show)
 
-type Time = Double -- seconds
+decodeTime :: Monad m => BS.ByteString -> m DiffTime
+decodeTime b = case (reads :: ReadS Pico) (BSC.unpack b) of
+  [(d,"")] -> return $ realToFrac (d / 1000)
+  _        -> fail $ "decodeTime: " ++ show b
 
-decodeTime :: Monad m => BS.ByteString -> m Time
-decodeTime b = case readDouble b of
-  Just (d,r) | BS.null r -> return $ d / 1000
-  _ -> fail $ "decodeTime: " ++ show b
-
-type TimeStamp = POSIXTime
-
-decodeTimeStamp :: Monad m => BS.ByteString -> m TimeStamp
+decodeTimeStamp :: Monad m => BS.ByteString -> m POSIXTime
 decodeTimeStamp s | "0x" `BS.isPrefixOf` s = do
   t <- case BSC.split '.' (BS.drop 2 s) of
     [i]   -> fromIntegral `liftM` readHex i
@@ -77,8 +72,8 @@ data Variable =
 
 -- | Record with system variables from a response
 data Variables = Variables
-  { clock          :: Maybe TimeStamp
-  , rootDispersion :: Maybe Time
+  { clock          :: Maybe POSIXTime
+  , rootDispersion :: Maybe DiffTime
   }
   deriving Show
 
